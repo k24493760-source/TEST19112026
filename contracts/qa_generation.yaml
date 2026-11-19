@@ -1,0 +1,35 @@
+# Контракт генератора Q&A. Сеть и LLM по умолчанию выключены.
+prompt_version: "2026-11-17-qa-v1"
+max_questions_per_chunk: 3
+min_evidence_chars: 80
+skip_element_types:
+  - table_row
+  - running_header
+  - page_number
+no_basis_expected_status: basis_not_found
+eval_splits:
+  - train
+  - holdout
+golden_test_kinds:
+  - single
+  - multi
+  - exception
+  - no_basis
+  - conflict
+# Семантические дубли — отдельный интерфейс, не LLM-истина.
+semantic_duplicate_checker: noop
+llm:
+  enabled: false
+  adapter: stub
+  base_url: ""
+  model: ""
+  revision: ""
+  timeout_seconds: 30
+  max_tokens: 1024
+  temperature: 0.0
+  max_parallel: 1
+  enqueue_after_chunking: true
+  allowed_hosts:
+    - 127.0.0.1
+    - localhost
+    - "::1"

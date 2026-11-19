@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+
+{% block title %}Рабочее пространство — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading workspace-heading">
+        <div>
+            <h2>Рабочее пространство</h2>
+            <p>Документы из базы: загрузка через сайт сохраняет файл в <code>data/corpus</code> и сразу создаёт черновик в этой таблице.</p>
+        </div>
+        <div class="workspace-actions">
+            <a class="btn btn-secondary" href="/api/v1/most/manifest">Скачать манифест (JSON)</a>
+            <button type="button" class="btn btn-send" id="run-audit">Запустить аудит</button>
+        </div>
+    </div>
+
+    <div class="expert-tabs">
+        <button type="button" class="active" data-tab="registry">Реестр</button>
+        <button type="button" data-tab="pipeline">Пайплайн документов</button>
+    </div>
+
+    <section class="card registry-card" id="debug-panel">
+        <p id="audit-status" class="upload-status" hidden></p>
+        <div class="registry-table-wrap workspace-table-wrap">
+            <table class="registry-table workspace-table" id="audit-table">
+                <colgroup>
+                    <col class="col-title">
+                    <col class="col-class">
+                    <col class="col-version">
+                    <col class="col-format">
+                    <col class="col-size">
+                    <col class="col-hash">
+                    <col class="col-nchunks">
+                    <col class="col-normalized">
+                    <col class="col-chunks">
+                    <col class="col-validation">
+                    <col class="col-status">
+                    <col class="col-archive">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Класс</th>
+                        <th>Версия</th>
+                        <th>Формат</th>
+                        <th>КБ</th>
+                        <th>SHA</th>
+                        <th>Чанков</th>
+                        <th>Текст</th>
+                        <th>Чанки</th>
+                        <th>Валидация</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="audit-tbody">
+                    {% for doc in documents %}
+                    <tr>
+                        <td>
+                            {% if doc.has_original %}
+                            <a class="doc-title-link" href="/api/v1/most/document/{{ doc.id }}/original" target="_blank" rel="noopener">{{ doc.title }}</a>
+                            {% else %}
+                            {{ doc.title }}
+                            {% endif %}
+                        </td>
+                        <td>{{ doc.document_class }}</td>
+                        <td>{{ doc.version }}</td>
+                        <td>{{ doc.file_format }}</td>
+                        <td>{{ doc.size_kb }}</td>
+                        <td class="hash-cell">{{ doc.hash_short }}</td>
+                        <td>{{ doc.n_chunks }}</td>
+                        <td>
+                            <a class="btn btn-secondary btn-inspect" href="/api/v1/most/document/{{ doc.id }}/normalized" target="_blank" rel="noopener">Текст</a>
+                        </td>
+                        <td>
+                            <a class="btn btn-secondary btn-inspect" href="/api/v1/most/document/{{ doc.id }}/chunks" target="_blank" rel="noopener">Чанки</a>
+                        </td>
+                        <td>
+                            {% if doc.validation_ok %}
+                            <span class="validation-ok" title="Ошибок нет">✓ OK</span>
+                            {% else %}
+                            <button type="button" class="validation-error" title="{{ doc.validation_errors | join(' ') }}">Ошибка</button>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="status-pill status-pill--{{ doc.status }}">{{ doc.status_label }}</span>
+                        </td>
+                        <td>
+                            {% if doc.status != "archived" %}
+                            <button type="button" class="btn btn-secondary btn-archive" data-id="{{ doc.id }}">Отправить в архив</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr id="audit-empty">
+                        <td colspan="12" class="expert-empty">Документов в базе пока нет. Загрузите файл через сайт — он появится здесь как черновик.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card registry-card" id="pipeline-panel" hidden>
+        <div class="registry-table-wrap workspace-table-wrap">
+            <table class="registry-table workspace-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Статус</th>
+                        <th>Прогресс</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="pipeline-tbody">
+                    {% for doc in documents %}
+                    <tr>
+                        <td class="hash-cell">{{ doc.id }}</td>
+                        <td>{{ doc.title }}</td>
+                        <td><span class="status-pill status-pill--{{ doc.status }}">{{ doc.status_label }}</span></td>
+                        <td>{{ doc.n_chunks }} чанк(ов)</td>
+                        <td>
+                            <button type="button" class="btn btn-secondary btn-inspect" data-chunks="{{ doc.id }}">Посмотреть чанки</button>
+                            <button type="button" class="btn btn-secondary btn-inspect" data-logs="{{ doc.id }}">Логи</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="expert-empty">Документов пока нет.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="expert-modal" id="ws-modal" hidden>
+        <div class="expert-modal-card">
+            <h3 id="ws-modal-title">Детали</h3>
+            <div id="ws-modal-body"></div>
+            <button type="button" class="btn btn-secondary" id="ws-modal-close">Закрыть</button>
+        </div>
+    </div>
+</main>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const button = document.getElementById("run-audit");
+        const tbody = document.getElementById("audit-tbody");
+        const pipelineBody = document.getElementById("pipeline-tbody");
+        const statusEl = document.getElementById("audit-status");
+        const modal = document.getElementById("ws-modal");
+        const modalTitle = document.getElementById("ws-modal-title");
+        const modalBody = document.getElementById("ws-modal-body");
+
+        const PIPELINE_STATUS = {
+            draft: "Ожидает",
+            processing: "В обработке",
+            ready_for_review: "Готов к экспертизе",
+            error: "Ошибка",
+            approved: "Утверждён",
+            archived: "Архив"
+        };
+        const PIPELINE_PROGRESS = {
+            draft: "ожидание парсинга",
+            processing: "парсинг / чанкинг",
+            ready_for_review: "эмбеддинги готовы",
+            error: "ошибка пайплайна",
+            approved: "опубликован",
+            archived: "архив"
+        };
+
+        const escapeHtml = (value) => {
+            const node = document.createElement("div");
+            node.textContent = value == null ? "" : String(value);
+            return node.innerHTML;
+        };
+
+        const renderPipeline = (documents) => {
+            if (!documents.length) {
+                pipelineBody.innerHTML = '<tr><td colspan="5" class="expert-empty">Документов пока нет.</td></tr>';
+                return;
+            }
+            pipelineBody.innerHTML = documents.map((doc) => {
+                const id = escapeHtml(doc.id);
+                const status = doc.status || "draft";
+                return `<tr>
+                    <td class="hash-cell">${id}</td>
+                    <td>${escapeHtml(doc.title)}</td>
+                    <td><span class="status-pill status-pill--${escapeHtml(status)}">${escapeHtml(PIPELINE_STATUS[status] || doc.status_label || status)}</span></td>
+                    <td>${escapeHtml(PIPELINE_PROGRESS[status] || status)} · ${escapeHtml(doc.n_chunks)} чанк(ов)</td>
+                    <td>
+                        <button type="button" class="btn btn-secondary btn-inspect" data-chunks="${id}">Посмотреть чанки</button>
+                        <button type="button" class="btn btn-secondary btn-inspect" data-logs="${id}">Логи</button>
+                    </td>
+                </tr>`;
+            }).join("");
+        };
+
+        const renderRows = (documents) => {
+            renderPipeline(documents);
+            if (!documents.length) {
+                tbody.innerHTML = '<tr id="audit-empty"><td colspan="12" class="expert-empty">Документов в базе пока нет. Загрузите файл через сайт — он появится здесь как черновик.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = documents.map((doc) => {
+                const id = escapeHtml(doc.id);
+                const status = escapeHtml(doc.status || "draft");
+                const label = escapeHtml(doc.status_label || doc.status || "черновик");
+                const title = escapeHtml(doc.title);
+                const titleCell = doc.has_original
+                    ? `<a class="doc-title-link" href="/api/v1/most/document/${id}/original" target="_blank" rel="noopener">${title}</a>`
+                    : title;
+                const archiveBtn = status === "archived"
+                    ? ""
+                    : `<button type="button" class="btn btn-secondary btn-archive" data-id="${id}">Отправить в архив</button>`;
+                const errors = Array.isArray(doc.validation_errors) ? doc.validation_errors : [];
+                const validationCell = doc.validation_ok
+                    ? '<span class="validation-ok" title="Ошибок нет">✓ OK</span>'
+                    : `<button type="button" class="validation-error" title="${escapeHtml(errors.join(" "))}">Ошибка</button>`;
+                return `
+                <tr>
+                    <td>${titleCell}</td>
+                    <td>${escapeHtml(doc.document_class || "—")}</td>
+                    <td>${escapeHtml(doc.version || "1.0")}</td>
+                    <td>${escapeHtml(doc.file_format)}</td>
+                    <td>${escapeHtml(doc.size_kb)}</td>
+                    <td class="hash-cell">${escapeHtml(doc.hash_short)}</td>
+                    <td>${escapeHtml(doc.n_chunks)}</td>
+                    <td><a class="btn btn-secondary btn-inspect" href="/api/v1/most/document/${id}/normalized" target="_blank" rel="noopener">Текст</a></td>
+                    <td><a class="btn btn-secondary btn-inspect" href="/api/v1/most/document/${id}/chunks" target="_blank" rel="noopener">Чанки</a></td>
+                    <td>${validationCell}</td>
+                    <td><span class="status-pill status-pill--${status}">${label}</span></td>
+                    <td>${archiveBtn}</td>
+                </tr>`;
+            }).join("");
+        };
+
+        const showError = (message) => {
+            statusEl.hidden = false;
+            statusEl.className = "upload-status upload-status--err";
+            statusEl.textContent = message;
+        };
+
+        tbody.addEventListener("click", async (event) => {
+            const archiveBtn = event.target.closest(".btn-archive");
+            if (!archiveBtn) return;
+            const docId = archiveBtn.dataset.id;
+            if (!docId) return;
+            archiveBtn.disabled = true;
+            try {
+                const response = await fetch(`/api/v1/most/archive/${encodeURIComponent(docId)}`, { method: "POST" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || "Не удалось отправить документ в архив.");
+                }
+                renderRows(data.documents || []);
+                statusEl.hidden = false;
+                statusEl.className = "upload-status upload-status--ok";
+                statusEl.textContent = "Документ отправлен в архив.";
+            } catch (error) {
+                showError(error.message || "Ошибка архивации.");
+                archiveBtn.disabled = false;
+            }
+        });
+
+        document.querySelector(".expert-tabs").addEventListener("click", (event) => {
+            const btn = event.target.closest("button[data-tab]");
+            if (!btn) return;
+            document.querySelectorAll(".expert-tabs button").forEach((item) => {
+                item.classList.toggle("active", item === btn);
+            });
+            const tab = btn.getAttribute("data-tab");
+            document.getElementById("debug-panel").hidden = tab !== "registry";
+            document.getElementById("pipeline-panel").hidden = tab !== "pipeline";
+        });
+
+        document.getElementById("ws-modal-close").addEventListener("click", () => {
+            modal.hidden = true;
+        });
+        modal.addEventListener("click", (event) => {
+            if (event.target === modal) modal.hidden = true;
+        });
+
+        const openModal = (title, html) => {
+            modalTitle.textContent = title;
+            modalBody.innerHTML = html;
+            modal.hidden = false;
+        };
+
+        pipelineBody.addEventListener("click", async (event) => {
+            const logsBtn = event.target.closest("[data-logs]");
+            const chunksBtn = event.target.closest("[data-chunks]");
+            const docId = logsBtn
+                ? logsBtn.getAttribute("data-logs")
+                : (chunksBtn ? chunksBtn.getAttribute("data-chunks") : null);
+            if (!docId) return;
+            try {
+                if (logsBtn) {
+                    const response = await fetch(`/api/v1/most/workspace/document/${encodeURIComponent(docId)}/pipeline_log`);
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || "Не удалось загрузить логи.");
+                    const items = data.items || [];
+                    const html = items.length
+                        ? `<table class="registry-table"><thead><tr><th>Этап</th><th>Статус</th><th>Время</th><th>Детали</th></tr></thead><tbody>${
+                            items.map((row) => `<tr>
+                                <td>${escapeHtml(row.action)}</td>
+                                <td>${escapeHtml(row.status)}</td>
+                                <td>${escapeHtml(row.timestamp || "")}</td>
+                                <td><pre style="white-space:pre-wrap;margin:0;">${escapeHtml(JSON.stringify(row.details || {}, null, 2))}</pre></td>
+                            </tr>`).join("")
+                        }</tbody></table>`
+                        : "<p class=\"expert-empty\">Записей пайплайна нет.</p>";
+                    openModal("Логи пайплайна", html);
+                    return;
+                }
+                if (chunksBtn) {
+                    const response = await fetch(`/api/v1/most/workspace/document/${encodeURIComponent(docId)}/chunks`);
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(data.detail || "Не удалось загрузить чанки.");
+                    const items = data.items || [];
+                    const html = items.length
+                        ? `<table class="registry-table"><thead><tr><th>Стр.</th><th>Раздел</th><th>Эмбеддинг</th><th>Текст</th></tr></thead><tbody>${
+                            items.map((row) => `<tr>
+                                <td>${escapeHtml(row.page)}</td>
+                                <td>${escapeHtml(row.section)}</td>
+                                <td>${escapeHtml(row.embedding_status)}</td>
+                                <td>${escapeHtml(row.text_preview)}</td>
+                            </tr>`).join("")
+                        }</tbody></table>`
+                        : "<p class=\"expert-empty\">Чанков нет.</p>";
+                    openModal("Чанки документа", html);
+                }
+            } catch (error) {
+                openModal("Ошибка", `<p>${escapeHtml(error.message || "ошибка")}</p>`);
+            }
+        });
+
+        button.addEventListener("click", async () => {
+            button.disabled = true;
+            statusEl.hidden = true;
+            try {
+                const response = await fetch("/api/v1/most/audit", { method: "POST" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || "Не удалось выполнить аудит.");
+                }
+                renderRows(data.documents || []);
+                statusEl.hidden = false;
+                statusEl.className = "upload-status upload-status--ok";
+                statusEl.textContent = `Список обновлён из базы: ${data.count ?? 0} документ(ов).`;
+            } catch (error) {
+                statusEl.hidden = false;
+                statusEl.className = "upload-status upload-status--err";
+                statusEl.textContent = error.message || "Ошибка аудита.";
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+</script>
+{% endblock %}

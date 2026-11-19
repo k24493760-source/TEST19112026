@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Реестр источников — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading">
+        <h2>Реестр источников</h2>
+        <p>Все версии документов корпуса. В ответах агента участвуют только утверждённые и действующие источники.</p>
+    </div>
+
+    <form class="expert-toolbar" id="registry-filters">
+        <label>Класс
+            <select id="filter-class">
+                <option value="all">Все</option>
+                <option value="normative_act">Нормативный акт</option>
+                <option value="official_explanation">Официальное разъяснение</option>
+                <option value="legal_comment">Юридический комментарий</option>
+                <option value="edu_material">Учебный материал</option>
+                <option value="case">Кейс</option>
+                <option value="method">Методика</option>
+            </select>
+        </label>
+        <label>Статус
+            <select id="filter-status">
+                <option value="all">Все</option>
+                <option value="active">Действует</option>
+                <option value="changed">Изменен</option>
+                <option value="revoked">Отменен</option>
+                <option value="draft">Черновик</option>
+            </select>
+        </label>
+        <label>Владелец
+            <input type="text" id="filter-owner" placeholder="владелец" value="Заказчик">
+        </label>
+        <label>Поиск
+            <input type="text" id="filter-search" placeholder="название">
+        </label>
+        <button type="submit" class="btn btn-send">Применить</button>
+    </form>
+
+    <section class="card registry-card">
+        <div class="registry-table-wrap">
+            <table class="registry-table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Класс</th>
+                        <th>Владелец</th>
+                        <th>Версия</th>
+                        <th>Статус</th>
+                        <th>Дата проверки</th>
+                        <th>Форматы</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="registry-body">
+                    <tr><td colspan="8" class="expert-empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<div class="expert-modal" id="doc-modal" hidden>
+    <div class="expert-modal-card">
+        <h3 id="modal-title">Карточка источника</h3>
+        <div id="modal-body"></div>
+        <form id="status-form">
+            <input type="hidden" id="modal-doc-id">
+            <label>Новый статус
+                <select id="new-status">
+                    <option value="active">Действует</option>
+                    <option value="changed">Изменен</option>
+                    <option value="revoked">Отменен</option>
+                    <option value="draft">Черновик</option>
+                </select>
+            </label>
+            <label>Комментарий
+                <textarea id="status-comment" rows="2" style="width:100%"></textarea>
+            </label>
+            <p id="modal-msg" class="expert-meta" hidden></p>
+            <button type="submit" class="btn btn-send">Изменить статус</button>
+            <button type="button" class="btn btn-send" id="btn-approve">Утвердить</button>
+            <button type="button" class="btn" id="btn-close">Закрыть</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const CLASS_RU = {
+        normative_act: "Нормативный акт",
+        official_explanation: "Официальное разъяснение",
+        legal_comment: "Юридический комментарий",
+        edu_material: "Учебный материал",
+        case: "Кейс",
+        method: "Методика",
+        "Нормативный акт": "Нормативный акт",
+        "Официальное разъяснение": "Официальное разъяснение",
+        "Юридический комментарий": "Юридический комментарий",
+        "Учебный материал": "Учебный материал",
+        "Кейс": "Кейс",
+        "Методика": "Методика"
+    };
+    const STATUS_RU = {
+        active: "Действует",
+        changed: "Изменен",
+        revoked: "Отменен",
+        draft: "Черновик",
+        approved: "Действует",
+        archived: "Отменен"
+    };
+
+    function esc(v) {
+        return String(v ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+    }
+    function itemsOf(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.items)) return payload.items;
+        return [];
+    }
+    function fmtDate(v) {
+        if (!v) return "—";
+        return String(v).slice(0, 10);
+    }
+
+    async function loadList() {
+        const params = new URLSearchParams();
+        const cls = document.getElementById("filter-class").value;
+        const st = document.getElementById("filter-status").value;
+        const owner = document.getElementById("filter-owner").value.trim();
+        const search = document.getElementById("filter-search").value.trim();
+        if (cls && cls !== "all") params.set("document_class", cls);
+        if (st && st !== "all") params.set("status", st);
+        if (owner) params.set("owner", owner);
+        if (search) params.set("search", search);
+        const res = await fetch("/api/v1/most/corpus/registry?" + params.toString());
+        const data = await res.json().catch(() => ({}));
+        const items = itemsOf(data);
+        const body = document.getElementById("registry-body");
+        if (!items.length) {
+            body.innerHTML = '<tr><td colspan="8" class="expert-empty">Источники не найдены</td></tr>';
+            return;
+        }
+        body.innerHTML = items.map((item) => `<tr>
+            <td>${esc(item.title)}</td>
+            <td>${esc(CLASS_RU[item.document_class] || item.document_class)}</td>
+            <td>${esc(item.owner)}</td>
+            <td>${esc(item.version)}</td>
+            <td>${esc(STATUS_RU[item.status] || item.status)}</td>
+            <td>${esc(fmtDate(item.reviewed_at))}</td>
+            <td>${esc((item.file_formats || []).join(", ") || "—")}</td>
+            <td><button type="button" class="btn-inspect js-open" data-id="${esc(item.document_id)}">Открыть</button></td>
+        </tr>`).join("");
+    }
+
+    async function openCard(id) {
+        const res = await fetch("/api/v1/most/corpus/registry/" + encodeURIComponent(id));
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.detail || "Не удалось открыть карточку");
+            return;
+        }
+        const m = data.metadata || {};
+        const url = m.official_url
+            ? `<a href="${esc(m.official_url)}" target="_blank" rel="noopener">${esc(m.official_url)}</a>`
+            : "—";
+        const reps = (data.representations || []).map((r) =>
+            `${esc((r.format || "").toUpperCase())} · ${esc(r.file_size ?? "—")} байт${r.is_primary ? " · основной" : ""}`
+        ).join("<br>") || "—";
+        const st = data.chunking_stats || {};
+        const dep = data.dependencies || {};
+        const hist = (data.history || []).map((h) =>
+            `${esc(h.timestamp || "")}: ${esc(h.action)} ${esc(h.old_status || "")} → ${esc(h.new_status || "")} (${esc(h.actor || "")}) ${esc(h.comment || "")}`
+        ).join("<br>") || "нет записей";
+        document.getElementById("modal-doc-id").value = data.document_id;
+        document.getElementById("modal-title").textContent = m.title || "Карточка источника";
+        document.getElementById("modal-body").innerHTML =
+            `<p class="expert-meta">${esc(CLASS_RU[m.document_class] || m.document_class)} · ${esc(STATUS_RU[m.status] || m.status)} · v${esc(m.version)}</p>`
+            + `<p>Владелец: ${esc(m.owner)}</p>`
+            + `<p>URL: ${url}</p>`
+            + `<p>Проверка: ${esc(fmtDate(m.reviewed_at))}</p>`
+            + `<p>Представления:<br>${reps}</p>`
+            + `<p>Чанки: всего ${esc(st.total_chunks)} / утверждено ${esc(st.approved_chunks)} / ожидает ${esc(st.pending_approval_chunks)}</p>`
+            + `<p>Зависимости: ответы ${esc(dep.dependent_answers_count)} · тесты ${esc(dep.dependent_tests_count)}</p>`
+            + `<p>История:<br>${hist}</p>`;
+        document.getElementById("modal-msg").hidden = true;
+        document.getElementById("doc-modal").hidden = false;
+    }
+
+    document.getElementById("registry-filters").addEventListener("submit", (e) => {
+        e.preventDefault();
+        loadList();
+    });
+    document.getElementById("registry-body").addEventListener("click", (e) => {
+        const btn = e.target.closest(".js-open");
+        if (btn) openCard(btn.getAttribute("data-id"));
+    });
+    document.getElementById("btn-close").addEventListener("click", () => {
+        document.getElementById("doc-modal").hidden = true;
+    });
+    document.getElementById("status-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const id = document.getElementById("modal-doc-id").value;
+        const res = await fetch(`/api/v1/most/corpus/registry/${encodeURIComponent(id)}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                status: document.getElementById("new-status").value,
+                comment: document.getElementById("status-comment").value,
+                actor_id: "registry-ui",
+                actor_role: "kb_admin"
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        const msg = document.getElementById("modal-msg");
+        msg.hidden = false;
+        msg.textContent = res.ok ? (data.message || "Статус обновлён.") : (data.detail || "ошибка");
+        if (res.ok) loadList();
+    });
+    document.getElementById("btn-approve").addEventListener("click", async () => {
+        const id = document.getElementById("modal-doc-id").value;
+        const res = await fetch(`/api/v1/most/corpus/registry/${encodeURIComponent(id)}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                actor_id: "registry-ui",
+                actor_role: "kb_admin",
+                comment: document.getElementById("status-comment").value
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        const msg = document.getElementById("modal-msg");
+        msg.hidden = false;
+        msg.textContent = res.ok ? ("Утверждено: " + (data.status || "active")) : (data.detail || "ошибка");
+        if (res.ok) { loadList(); openCard(id); }
+    });
+
+    loadList();
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Эксперт МОСТ{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=expert-role-select">
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true"></div>
+            <div class="brand-copy">
+                <h1>Эксперт МОСТ</h1>
+                <span>УКЗ-15</span>
+            </div>
+        </div>
+        <nav class="header-nav">
+            {% block nav %}
+            <a href="/ui">Рабочее место</a>
+            <a href="/docs">API</a>
+            <form method="post" action="/api/v1/auth/logout" style="display:inline">
+                <button class="btn" type="submit">Выход</button>
+            </form>
+            {% endblock %}
+        </nav>
+    </header>
+    <div class="layout">
+        {% set path = request.url.path if request is defined else "" %}
+        <aside class="sidebar">
+            <nav class="sidebar-nav" aria-label="Разделы">
+                <a class="nav-item {% if path in ['/ui', '/'] %}active{% endif %}" href="/ui">Чат с экспертом</a>
+                <a class="nav-item" href="#">Карта компетенций</a>
+                <a class="nav-item" href="#">Кабинет куратора</a>
+                <a class="nav-item {% if path == '/ui/expert_queue' %}active{% endif %}" href="/ui/expert_queue">Очередь эксперта</a>
+                <a class="nav-item {% if path == '/ui/registry' %}active{% endif %}" href="/ui/registry">Реестр источников</a>
+                <a class="nav-item {% if path in ['/ui/upload', '/ui/admin/upload'] %}active{% endif %}" href="/ui/admin/upload">Загрузка документов</a>
+            </nav>
+            <a class="nav-item nav-item--workspace {% if path == '/ui/workspace' %}active{% endif %}" href="/ui/workspace">Рабочее пространство</a>
+        </aside>
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

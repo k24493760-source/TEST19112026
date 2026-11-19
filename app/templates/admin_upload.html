@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка корпуса — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading">
+        <h2>Администратор базы данных</h2>
+        <p>Загрузка и управление корпусом. Документ попадает к эксперту со статусом черновика.</p>
+    </div>
+    <div class="expert-tabs">
+        <button type="button" class="active" data-tab="wizard">Загрузка</button>
+        <button type="button" data-tab="mine">Мои загрузки</button>
+    </div>
+
+    <section class="card upload-card" id="panel-wizard">
+        <div id="step-1">
+            <h3>Шаг 1. Файл или URL</h3>
+            <div id="drop-zone" style="border:2px dashed #c5cedd;border-radius:12px;padding:28px;text-align:center;margin:12px 0;">
+                Перетащите файл сюда или выберите
+                <input type="file" id="file-input" accept=".txt,.md,.docx,.pdf">
+            </div>
+            <label>URL
+                <input type="url" id="source-url" placeholder="https://..." style="width:100%;padding:8px;">
+            </label>
+            <button type="button" class="btn btn-send" id="btn-check">Проверить</button>
+            <p id="validate-msg" class="expert-meta"></p>
+        </div>
+        <div id="step-2" hidden>
+            <h3>Шаг 2. Превью</h3>
+            <pre id="text-preview" style="white-space:pre-wrap;max-height:180px;overflow:auto;background:#F4F6FB;padding:12px;border-radius:8px;"></pre>
+            <button type="button" class="btn btn-send" id="btn-continue">Продолжить</button>
+        </div>
+        <div id="step-3" hidden>
+            <h3>Шаг 3. Метаданные</h3>
+            <label>Название <input id="meta-title" required style="width:100%;padding:8px;"></label>
+            <label>Класс
+                <select id="meta-class">
+                    <option value="Нормативный акт">Нормативный акт</option>
+                    <option value="Официальное разъяснение">Официальное разъяснение</option>
+                    <option value="Юридический комментарий">Юридический комментарий</option>
+                    <option value="Учебный материал">Учебный материал</option>
+                    <option value="Кейс">Практический кейс</option>
+                    <option value="Методика">Методика</option>
+                </select>
+            </label>
+            <label>Источник корпуса
+                <select id="meta-source" required>
+                    <option value="">Выберите источник</option>
+                    <option value="database_law">database_law</option>
+                    <option value="database_edu_lectcii">database_edu_lectcii</option>
+                </select>
+            </label>
+            <label>Владелец <input id="meta-owner" value="Заказчик" style="width:100%;padding:8px;"></label>
+            <label>Дата <input type="date" id="meta-date"></label>
+            <label>Официальный URL <input id="meta-url" style="width:100%;padding:8px;"></label>
+            <button type="button" class="btn btn-send" id="btn-meta">Далее</button>
+        </div>
+        <div id="step-4" hidden>
+            <h3>Шаг 4. Версия</h3>
+            <label><input type="radio" name="vaction" value="new" checked> Новый</label><br>
+            <label><input type="radio" name="vaction" value="new_version"> Новая версия</label><br>
+            <label><input type="radio" name="vaction" value="replace"> Замена</label>
+            <div id="related-wrap" hidden>
+                <label>Связанный документ
+                    <select id="related-doc"></select>
+                </label>
+            </div>
+            <button type="button" class="btn btn-send" id="btn-commit">Загрузить и отправить на экспертизу</button>
+            <p id="commit-msg" class="expert-meta"></p>
+        </div>
+    </section>
+
+    <section class="card registry-card" id="panel-mine" hidden>
+        <div class="registry-table-wrap">
+            <table class="registry-table">
+                <thead>
+                    <tr><th>Название</th><th>Статус</th><th>Дата</th><th>Ошибки</th></tr>
+                </thead>
+                <tbody id="uploads-body">
+                    <tr><td colspan="4" class="expert-empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script>
+    const STATUS_RU = {
+        draft: "Черновик",
+        processing: "Обработка",
+        ready_for_review: "Ждет эксперта",
+        approved: "Действует",
+        active: "Действует",
+        changed: "Изменен",
+        revoked: "Отменен"
+    };
+    let fileHash = "";
+    let fileName = "document.txt";
+    let pickedFile = null;
+
+    function esc(v) {
+        return String(v ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+    }
+    function showStep(n) {
+        ["step-1","step-2","step-3","step-4"].forEach((id, i) => {
+            document.getElementById(id).hidden = i !== n;
+        });
+    }
+
+    const drop = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); });
+    drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files[0]) {
+            pickedFile = e.dataTransfer.files[0];
+            fileInput.files = e.dataTransfer.files;
+        }
+    });
+    fileInput.addEventListener("change", () => { pickedFile = fileInput.files[0]; });
+
+    document.getElementById("btn-check").addEventListener("click", async () => {
+        const msg = document.getElementById("validate-msg");
+        const url = document.getElementById("source-url").value.trim();
+        msg.textContent = "";
+        if (url) {
+            const res = await fetch("/api/v1/most/admin/upload/url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url, metadata: { title: url }, version_action: "new" })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { msg.textContent = data.detail || "Не удалось скачать по ссылке"; msg.style.color = "#C41A4B"; return; }
+            if (data.status === "duplicate") {
+                msg.style.color = "#C41A4B";
+                msg.textContent = "Дубликат. ID: " + data.existing_document_id + " · " + data.title;
+                return;
+            }
+            if (data.status === "unique") {
+                fileHash = data.hash;
+                fileName = data.file_name || "remote.bin";
+                document.getElementById("text-preview").textContent = data.text_preview || "";
+                document.getElementById("meta-title").value = fileName.replace(/\.[^.]+$/, "");
+                showStep(1);
+                return;
+            }
+            msg.style.color = "#273A8C";
+            msg.textContent = "Файл по URL принят: " + (data.document_id || "");
+            loadUploads();
+            return;
+        }
+        const file = pickedFile || fileInput.files[0];
+        if (!file) { msg.textContent = "Выберите файл или укажите URL."; return; }
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/v1/most/admin/upload/validate", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (data.status === "duplicate") {
+            msg.style.color = "#C41A4B";
+            msg.textContent = "Дубликат. ID: " + data.existing_document_id + " · " + (data.title || "");
+            return;
+        }
+        if (data.status === "unique") {
+            fileHash = data.hash;
+            fileName = file.name;
+            document.getElementById("text-preview").textContent = data.text_preview || "";
+            document.getElementById("meta-title").value = file.name.replace(/\.[^.]+$/, "");
+            showStep(1);
+        } else {
+            msg.textContent = data.detail || "Ошибка проверки";
+        }
+    });
+
+    document.getElementById("btn-continue").addEventListener("click", () => showStep(2));
+    document.getElementById("btn-meta").addEventListener("click", async () => {
+        showStep(3);
+        const res = await fetch("/api/v1/most/corpus/registry?limit=100");
+        const data = await res.json().catch(() => ({ items: [] }));
+        const sel = document.getElementById("related-doc");
+        sel.innerHTML = (data.items || []).map((d) =>
+            `<option value="${esc(d.document_id)}">${esc(d.title)} (${esc(d.version)})</option>`
+        ).join("") || "<option value=''>нет документов</option>";
+    });
+    document.querySelectorAll("input[name=vaction]").forEach((el) => {
+        el.addEventListener("change", () => {
+            document.getElementById("related-wrap").hidden = el.value === "new" && document.querySelector("input[name=vaction]:checked").value === "new";
+            const v = document.querySelector("input[name=vaction]:checked").value;
+            document.getElementById("related-wrap").hidden = v === "new";
+        });
+    });
+
+    document.getElementById("btn-commit").addEventListener("click", async () => {
+        const v = document.querySelector("input[name=vaction]:checked").value;
+        const related = v === "new" ? null : document.getElementById("related-doc").value;
+        const res = await fetch("/api/v1/most/admin/upload/commit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                file_hash: fileHash,
+                file_name: fileName,
+                version_action: v,
+                related_document_id: related,
+                metadata: {
+                    title: document.getElementById("meta-title").value,
+                    document_class: document.getElementById("meta-class").value,
+                    corpus_source: document.getElementById("meta-source").value,
+                    owner: document.getElementById("meta-owner").value,
+                    valid_from: document.getElementById("meta-date").value || null,
+                    official_url: document.getElementById("meta-url").value || null
+                }
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        const msg = document.getElementById("commit-msg");
+        msg.textContent = res.ok ? (data.message + " · " + data.document_id) : (JSON.stringify(data.detail) || "ошибка");
+        if (res.ok) loadUploads();
+    });
+
+    async function loadUploads() {
+        const res = await fetch("/api/v1/most/admin/uploads");
+        const data = await res.json().catch(() => ({ items: [] }));
+        const items = data.items || [];
+        const body = document.getElementById("uploads-body");
+        if (!items.length) {
+            body.innerHTML = '<tr><td colspan="4" class="expert-empty">Источники не найдены</td></tr>';
+            return;
+        }
+        body.innerHTML = items.map((d) => `<tr>
+            <td>${esc(d.title)}</td>
+            <td>${esc(STATUS_RU[d.status] || d.status)}</td>
+            <td>${esc((d.created_at || "").slice(0, 10))}</td>
+            <td>—</td>
+        </tr>`).join("");
+    }
+
+    document.querySelector(".expert-tabs").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-tab]");
+        if (!btn) return;
+        document.querySelectorAll(".expert-tabs button").forEach((b) => b.classList.toggle("active", b === btn));
+        const tab = btn.getAttribute("data-tab");
+        document.getElementById("panel-wizard").hidden = tab !== "wizard";
+        document.getElementById("panel-mine").hidden = tab !== "mine";
+        if (tab === "mine") loadUploads();
+    });
+</script>
+{% endblock %}

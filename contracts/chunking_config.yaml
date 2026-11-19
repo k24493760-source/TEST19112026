@@ -1,0 +1,31 @@
+chunking_version: ukz15-chunk-1.1
+tokenizer_model: sentence-transformers/all-MiniLM-L6-v2
+working_corpus_release: working-draft
+
+# Лимиты из «ДЕЛЕНИЕ на чанки в зависимости от КЛАССА документа».
+# Мягкий лимит 1000 символов, жёсткий 1500. Перекрытие 180 символов
+# только у классов без жёсткой границы. Нормативный акт и кейс не перекрываются.
+soft_limit_chars: 1000
+hard_limit_chars: 1500
+overlap_chars: 180
+
+classes:
+  "Нормативный акт":
+    strategy: normative_act
+    overlap_chars: 0
+  "Официальное разъяснение":
+    strategy: official_explanation
+    overlap_chars: 180
+  "Юридический комментарий":
+    strategy: legal_commentary
+    overlap_chars: 180
+  "Учебный материал":
+    strategy: edu_material
+    overlap_chars: 180
+  "Кейс":
+    strategy: case
+    overlap_chars: 0
+    whole_limit_chars: 2000
+  "Методика":
+    strategy: methodology
+    overlap_chars: 0

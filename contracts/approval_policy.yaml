@@ -1,0 +1,44 @@
+# Права и обязательные роли экспертизы. Не заменяет решение LLM.
+pending_document_status: ready_for_review
+approved_document_status: approved
+rejected_document_status: rejected
+
+expert_roles:
+  lawyer: юрист
+  medical_methodologist: медицинский методолог
+  methodist: методист
+
+admin_roles:
+  - admin
+  - kb_admin
+  - administrator
+
+# Именной допуск к кнопке «Утвердить». Не даёт это право всей роли.
+document_approvers:
+  - tatels7
+
+# Администратор готовит и публикует, но не закрывает юридическую/медицинскую экспертизу.
+permissions:
+  submit_review: [admin, kb_admin, curator, methodist, lawyer, medical_methodologist]
+  expert_approve: [lawyer, medical_methodologist, methodist]
+  expert_reject: [lawyer, medical_methodologist, methodist]
+  publish_release: [admin, kb_admin, administrator]
+  view_queue: [lawyer, medical_methodologist, methodist, admin, kb_admin, curator]
+  qa_submit: [admin, kb_admin, curator, methodist, lawyer]
+  upload_document: [admin, kb_admin, administrator, curator]
+  manage_corpus: [admin, kb_admin, administrator]
+  view_original: [admin, kb_admin, administrator, curator, lawyer, medical_methodologist, methodist]
+
+class_roles:
+  "Нормативный акт": [lawyer]
+  "Официальное разъяснение": [lawyer]
+  "Юридический комментарий": [lawyer]
+  "Учебный материал": [methodist]
+  "Кейс": [methodist]
+  "Методика": [methodist]
+
+clinical_org_extra_role: medical_methodologist
+clinical_org_markers:
+  - клинико-организац
+  - организаци медицинской помощи
+  - порядок оказания помощи

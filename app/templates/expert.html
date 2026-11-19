@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Очередь эксперта — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading">
+        <h2>Очередь эксперта</h2>
+        <p>Задачи по отсутствию основания, конфликтам источников и апелляциям.</p>
+    </div>
+
+    <div class="expert-tabs">
+        <button type="button" class="active" data-tab="queue">Очередь</button>
+        <button type="button" data-tab="history">История</button>
+    </div>
+
+    <form class="expert-toolbar" id="queue-filters">
+        <label>Роль эксперта
+            <select name="expert_role" id="expert-role">
+                <option value="">Все</option>
+                <option value="lawyer">Юрист</option>
+                <option value="medical_methodologist">Медицинский методолог</option>
+                <option value="methodist">Методист</option>
+            </select>
+        </label>
+        <label>Статус
+            <select name="status" id="filter-status">
+                <option value="pending">Ожидает</option>
+                <option value="in_review">В работе</option>
+                <option value="resolved">Решено</option>
+                <option value="all">Все</option>
+            </select>
+        </label>
+        <label>Причина
+            <select name="reason" id="filter-reason">
+                <option value="all">Все</option>
+                <option value="no_basis">Нет основания</option>
+                <option value="source_conflict">Конфликт источников</option>
+                <option value="low_confidence">Низкая уверенность</option>
+                <option value="appeal">Апелляция</option>
+                <option value="new_document">Новый документ</option>
+            </select>
+        </label>
+        <label>Тип объекта
+            <select name="object_type" id="filter-object-type">
+                <option value="all">Все</option>
+                <option value="document">Документ</option>
+                <option value="chunk">Фрагмент</option>
+                <option value="answer">Ответ</option>
+                <option value="assessment">Оценка</option>
+                <option value="appeal">Апелляция</option>
+            </select>
+        </label>
+        <p class="expert-meta" id="expert-id-label"></p>
+        <button type="submit" class="btn btn-send">Применить</button>
+    </form>
+
+    <div id="panel-queue">
+        <div class="workspace-table-wrap">
+            <table class="workspace-table" id="queue-table">
+                <thead>
+                    <tr>
+                        <th>review_id</th>
+                        <th>object_type</th>
+                        <th>reason</th>
+                        <th>priority</th>
+                        <th>status</th>
+                        <th>created_at</th>
+                        <th>sla_deadline</th>
+                        <th>assigned_expert_role</th>
+                        <th>actions</th>
+                    </tr>
+                </thead>
+                <tbody id="queue-body">
+                    <tr><td colspan="9" class="expert-empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="panel-history" hidden>
+        <div class="workspace-table-wrap">
+            <table class="workspace-table">
+                <thead>
+                    <tr>
+                        <th>review_id</th>
+                        <th>object_type</th>
+                        <th>decision</th>
+                        <th>comment</th>
+                        <th>resolved_at</th>
+                        <th>time_spent_seconds</th>
+                        <th>audit_event_id</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                    <tr><td colspan="7" class="expert-empty">Нет записей.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if documents %}
+    <h3 class="expert-section-title">Черновики документов</h3>
+    <div id="expert-queue" class="expert-queue">
+        {% for doc in documents %}
+        {% set preview = (doc.chunks[0].text if doc.chunks else "") %}
+        <article class="card expert-card" data-doc-id="{{ doc.id }}">
+            <h3>{{ doc.title }}</h3>
+            {% if doc.is_version_update %}
+            <p class="version-update-badge">Обновление версии{% if doc.replaces_version %} — заменит действующую {{ doc.replaces_version }}{% endif %}</p>
+            {% endif %}
+            <p class="expert-meta">версия {{ doc.version }} · {{ doc.document_class }} · {{ doc.owner }}</p>
+            <p class="expert-preview">{% if preview %}{{ preview[:320] }}{% if preview|length > 320 %}…{% endif %}{% else %}Текст фрагментов отсутствует.{% endif %}</p>
+            <button type="button" class="btn btn-send js-approve" data-doc-id="{{ doc.id }}">Утвердить</button>
+            <p class="expert-card-error" hidden></p>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</main>
+
+<div class="expert-modal" id="review-modal" hidden>
+    <div class="expert-modal-card">
+        <h3 id="modal-title">Карточка задачи</h3>
+        <div id="modal-body"></div>
+        <form id="resolve-form">
+            <input type="hidden" id="modal-review-id">
+            <label>Решение
+                <select id="decision" required>
+                    <option value="approve">approve</option>
+                    <option value="reject">reject</option>
+                    <option value="request_revision">request_revision</option>
+                    <option value="escalate">escalate</option>
+                </select>
+            </label>
+            <label>action_type
+                <select id="action-type">
+                    <option value="close_task">close_task</option>
+                    <option value="publish_document">publish_document</option>
+                    <option value="rebuild_index">rebuild_index</option>
+                </select>
+            </label>
+            <label>Комментарий
+                <textarea id="resolve-comment" rows="3" style="width:100%"></textarea>
+            </label>
+            <p class="expert-card-error" id="modal-error" hidden></p>
+            <p id="reindex-warn" hidden>Потребуется переиндексация корпуса (reindex_required).</p>
+            <button type="submit" class="btn btn-send">Отправить решение</button>
+            <button type="button" class="btn" id="btn-comment">Комментарий</button>
+            <button type="button" class="btn" id="btn-close-modal">Закрыть</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const roleEl = document.getElementById("expert-role");
+    const statusEl = document.getElementById("filter-status");
+    const reasonEl = document.getElementById("filter-reason");
+    const typeEl = document.getElementById("filter-object-type");
+    let sessionUser = { id: "", role: "", login: "" };
+    const queueBody = document.getElementById("queue-body");
+    const historyBody = document.getElementById("history-body");
+    const modal = document.getElementById("review-modal");
+    const modalBody = document.getElementById("modal-body");
+    const modalError = document.getElementById("modal-error");
+    const reindexWarn = document.getElementById("reindex-warn");
+
+    function esc(v) {
+        return String(v ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+    }
+    function shortId(id) {
+        const s = String(id || "");
+        return s.length > 10 ? s.slice(0, 8) + "…" : s;
+    }
+    function queryRole() {
+        return encodeURIComponent(roleEl.value);
+    }
+
+    function queueItems(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.items)) return payload.items;
+        return [];
+    }
+
+    async function loadQueue() {
+        const params = new URLSearchParams({
+            expert_role: roleEl.value,
+            status: statusEl.value,
+            reason: reasonEl.value || "all",
+            object_type: typeEl.value || "all"
+        });
+        const res = await fetch("/api/v1/most/expert/queue?" + params.toString());
+        const data = await res.json().catch(() => ({}));
+        const items = queueItems(data);
+        if (!items.length) {
+            queueBody.innerHTML = '<tr><td colspan="9" class="expert-empty">Задач нет</td></tr>';
+            return;
+        }
+        queueBody.innerHTML = items.map((item) => `<tr>
+            <td title="${esc(item.review_id)}">${esc(shortId(item.review_id))}</td>
+            <td>${esc(item.object_type)}</td>
+            <td>${esc(item.reason)}</td>
+            <td>${esc(item.priority)}</td>
+            <td>${esc(item.status)}</td>
+            <td>${esc(item.created_at || "")}</td>
+            <td>${esc(item.sla_deadline || "")}</td>
+            <td>${esc(item.assigned_expert_role || "")}</td>
+            <td><button type="button" class="btn-inspect js-open" data-id="${esc(item.review_id)}">Открыть</button></td>
+        </tr>`).join("");
+    }
+
+    async function loadHistory() {
+        const params = new URLSearchParams({ expert_role: roleEl.value });
+        const res = await fetch("/api/v1/most/expert/history?" + params.toString());
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            historyBody.innerHTML = `<tr><td colspan="7" class="expert-empty">${esc(data.detail || "ошибка")}</td></tr>`;
+            return;
+        }
+        const items = data.items || [];
+        if (!items.length) {
+            historyBody.innerHTML = '<tr><td colspan="7" class="expert-empty">Нет записей.</td></tr>';
+            return;
+        }
+        historyBody.innerHTML = items.map((item) => `<tr>
+            <td>${esc(shortId(item.review_id))}</td>
+            <td>${esc(item.object_type)}</td>
+            <td>${esc(item.decision)}</td>
+            <td>${esc(item.comment || "")}</td>
+            <td>${esc(item.resolved_at || "")}</td>
+            <td>${esc(item.time_spent_seconds ?? "")}</td>
+            <td>${esc(shortId(item.audit_event_id))}</td>
+        </tr>`).join("");
+    }
+
+    function renderCard(data) {
+        const snap = data.object_snapshot || {};
+        const claims = (snap.claims || []).map((c) => {
+            const cits = (c.citations || []).map((x) => `${esc(x.document_id || "")} ${esc(x.section || "")}/${esc(x.page || "")} v${esc(x.version || "")} ${esc(x.status || "")}`).join("; ");
+            return `<li class="claim-item"><span class="claim-tag">${esc(c.claim_type)}</span> ${esc(c.text || "")}<div class="claim-loc">${cits}</div></li>`;
+        }).join("");
+        const evid = (data.evidence || []).map((e) => {
+            const m = e.metadata || {};
+            return `<li>${esc(e.document_id || "")} · ${esc(m.section || "")}/${esc(m.page || "")} · v${esc(m.version || "")} · ${esc(m.status || "")}<div>${esc(e.text_fragment || "")}</div></li>`;
+        }).join("");
+        let html = `<p class="expert-meta">${esc(data.reason)} · ${esc(data.status)} · ${esc(data.created_at || "")}</p>`;
+        html += `<p><strong>Вопрос:</strong> ${esc(snap.question || "")}</p>`;
+        html += `<p><strong>Ответ:</strong> ${esc(snap.answer || "")}</p>`;
+        if (claims) html += `<ul class="claim-list">${claims}</ul>`;
+        if (evid) html += `<p>Evidence</p><ul>${evid}</ul>`;
+        if (data.conflict_details) {
+            html += `<div class="conflict-block"><strong>Обнаружено противоречие источников</strong><pre>${esc(JSON.stringify(data.conflict_details))}</pre></div>`;
+        }
+        if (data.user_appeal_context) {
+            html += `<p><strong>Апелляция:</strong> ${esc(JSON.stringify(data.user_appeal_context))}</p>`;
+        }
+        modalBody.innerHTML = html;
+        document.getElementById("modal-review-id").value = data.review_id;
+        modal.hidden = false;
+        reindexWarn.hidden = true;
+        modalError.hidden = true;
+    }
+
+    async function openCard(id) {
+        const res = await fetch(`/api/v1/most/expert/queue/${encodeURIComponent(id)}?expert_role=${queryRole()}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.detail || "Не удалось открыть карточку");
+            return;
+        }
+        renderCard(data);
+    }
+
+    document.getElementById("queue-filters").addEventListener("submit", (e) => {
+        e.preventDefault();
+        loadQueue();
+        if (!document.getElementById("panel-history").hidden) loadHistory();
+    });
+
+    queueBody.addEventListener("click", (e) => {
+        const btn = e.target.closest(".js-open");
+        if (btn) openCard(btn.getAttribute("data-id"));
+    });
+
+    document.querySelector(".expert-tabs").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-tab]");
+        if (!btn) return;
+        document.querySelectorAll(".expert-tabs button").forEach((b) => b.classList.toggle("active", b === btn));
+        const tab = btn.getAttribute("data-tab");
+        document.getElementById("panel-queue").hidden = tab !== "queue";
+        document.getElementById("panel-history").hidden = tab !== "history";
+        if (tab === "history") loadHistory();
+    });
+
+    document.getElementById("btn-close-modal").addEventListener("click", () => { modal.hidden = true; });
+
+    document.getElementById("btn-comment").addEventListener("click", async () => {
+        const reviewId = document.getElementById("modal-review-id").value;
+        const comment = document.getElementById("resolve-comment").value.trim();
+        if (!comment) {
+            modalError.hidden = false;
+            modalError.textContent = "Введите комментарий.";
+            return;
+        }
+        const res = await fetch(`/api/v1/most/expert/queue/${encodeURIComponent(reviewId)}/comment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                expert_id: sessionUser.id,
+                expert_role: sessionUser.role,
+                comment,
+                internal_only: true
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        modalError.hidden = false;
+        modalError.textContent = res.ok ? "Комментарий сохранён." : (data.detail || "ошибка");
+    });
+
+    document.getElementById("resolve-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const reviewId = document.getElementById("modal-review-id").value;
+        const decision = document.getElementById("decision").value;
+        const comment = document.getElementById("resolve-comment").value;
+        const res = await fetch(`/api/v1/most/expert/queue/${encodeURIComponent(reviewId)}/resolve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                expert_id: sessionUser.id,
+                expert_role: sessionUser.role,
+                decision,
+                comment,
+                resolution_action: { action_type: document.getElementById("action-type").value, payload: {} }
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            modalError.hidden = false;
+            modalError.textContent = data.detail || "ошибка";
+            return;
+        }
+        if (data.next_steps && data.next_steps.reindex_required) {
+            reindexWarn.hidden = false;
+        }
+        modalError.hidden = false;
+        modalError.textContent = "Решение сохранено.";
+        loadQueue();
+    });
+
+    const draftQueue = document.getElementById("expert-queue");
+    if (draftQueue) {
+        draftQueue.addEventListener("click", async (event) => {
+            const button = event.target.closest(".js-approve");
+            if (!button) return;
+            const docId = button.getAttribute("data-doc-id");
+            const card = draftQueue.querySelector(`.expert-card[data-doc-id="${CSS.escape(docId)}"]`);
+            const errorEl = card ? card.querySelector(".expert-card-error") : null;
+            button.disabled = true;
+            try {
+                const response = await fetch(`/api/v1/most/approve/${encodeURIComponent(docId)}`, { method: "POST" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Не удалось утвердить документ.");
+                if (card) card.remove();
+            } catch (error) {
+                button.disabled = false;
+                if (errorEl) { errorEl.hidden = false; errorEl.textContent = error.message; }
+            }
+        });
+    }
+
+    (async () => {
+        const me = await fetch("/api/v1/auth/me");
+        const data = await me.json().catch(() => ({}));
+        sessionUser = { id: data.id || "", role: data.role || "", login: data.login || "" };
+        const knownRoles = new Set(["lawyer", "medical_methodologist", "methodist"]);
+        roleEl.value = knownRoles.has(sessionUser.role) ? sessionUser.role : "";
+        const idLabel = document.getElementById("expert-id-label");
+        if (idLabel) idLabel.textContent = sessionUser.login ? ("Вход: " + sessionUser.login) : "";
+        loadQueue();
+    })();
+</script>
+{% endblock %}

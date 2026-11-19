@@ -1,0 +1,11 @@
+tests/_tmp/
+alembic_legacy/
+__pycache__/
+*.pyc
+.env
+.secrets/
+backups/*.sql
+backups/*.dump
+backups/*.log
+data/tmp_uploads/
+data/parsed/

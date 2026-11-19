@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка документов — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading">
+        <h2>Загрузка документов</h2>
+        <p>Документ сохраняется со статусом draft и не попадает в ответы, пока эксперт не утвердит источник.</p>
+    </div>
+
+    <section class="card upload-card">
+        <form id="upload-form" class="upload-form">
+            <div class="form-group">
+                <label for="doc-title">Название документа</label>
+                <input id="doc-title" name="title" type="text" required maxlength="300" placeholder="Например: Регламент охраны труда">
+            </div>
+            <div class="form-group">
+                <label for="doc-class">Класс документа</label>
+                <select id="doc-class" name="document_class" required>
+                    <option value="Нормативный акт">Нормативный акт</option>
+                    <option value="Официальное разъяснение">Официальное разъяснение</option>
+                    <option value="Юридический комментарий">Юридический комментарий</option>
+                    <option value="Учебный материал" selected>Учебный материал</option>
+                    <option value="Кейс">Практический кейс</option>
+                    <option value="Методика">Методика</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="doc-owner">Владелец</label>
+                <input id="doc-owner" name="owner" type="text" value="Заказчик" readonly>
+            </div>
+            <div class="form-group">
+                <label for="doc-source">Источник корпуса</label>
+                <select id="doc-source" name="corpus_source" required>
+                    <option value="" selected disabled>Выберите источник</option>
+                    <option value="database_law">database_law</option>
+                    <option value="database_edu_lectcii">database_edu_lectcii</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="doc-text">Текст документа</label>
+                <textarea id="doc-text" name="text" rows="10" placeholder="Вставьте текст источника…"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="doc-file">Файл с компьютера (.txt, .md, .docx, .pdf)</label>
+                <input id="doc-file" name="file" type="file" accept=".txt,.md,.docx,.pdf">
+            </div>
+            <button class="btn btn-send" type="submit">Отправить на проверку</button>
+            <p id="upload-status" class="upload-status" role="status" hidden></p>
+        </form>
+    </section>
+</main>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const form = document.getElementById("upload-form");
+        const statusEl = document.getElementById("upload-status");
+        const submitBtn = form.querySelector("button[type='submit']");
+        const titleInput = document.getElementById("doc-title");
+        const fileInput = document.getElementById("doc-file");
+        const allowedExt = [".txt", ".md", ".docx", ".pdf"];
+
+        const fileStem = (filename) => {
+            const base = filename.split(/[/\\]/).pop() || filename;
+            const dot = base.lastIndexOf(".");
+            return dot > 0 ? base.slice(0, dot) : base;
+        };
+
+        const fileExt = (filename) => {
+            const base = filename.split(/[/\\]/).pop() || filename;
+            const dot = base.lastIndexOf(".");
+            return dot >= 0 ? base.slice(dot).toLowerCase() : "";
+        };
+
+        const showStatus = (message, ok) => {
+            statusEl.hidden = false;
+            statusEl.textContent = message;
+            statusEl.classList.toggle("upload-status--ok", ok);
+            statusEl.classList.toggle("upload-status--err", !ok);
+        };
+
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            const ext = fileExt(file.name);
+            if (!allowedExt.includes(ext)) {
+                fileInput.value = "";
+                showStatus("Поддерживаются файлы .txt, .md, .docx и .pdf", false);
+                return;
+            }
+            titleInput.value = fileStem(file.name);
+            statusEl.hidden = true;
+        });
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            statusEl.hidden = true;
+            submitBtn.disabled = true;
+
+            const payload = new FormData(form);
+            try {
+                const response = await fetch("/api/v1/most/upload", {
+                    method: "POST",
+                    body: payload,
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const detail = data.detail;
+                    const message = Array.isArray(detail)
+                        ? detail.map((item) => item.msg).join(" ")
+                        : (detail || "Не удалось загрузить документ.");
+                    throw new Error(message);
+                }
+                showStatus(data.message || "Документ успешно загружен и отправлен на проверку эксперту", true);
+                form.reset();
+            } catch (error) {
+                showStatus(error.message || "Ошибка загрузки.", false);
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Вход — Эксперт МОСТ{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading">
+        <h2>Вход</h2>
+        <p>Загрузка документов и экспертиза доступны только авторизованным ролям.</p>
+    </div>
+    <section class="card upload-card">
+        {% if error %}<p class="upload-status upload-status--err">{{ error }}</p>{% endif %}
+        <form method="post" action="/api/v1/auth/login" class="upload-form">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <div class="form-group">
+                <label for="login">Логин</label>
+                <input id="login" name="login" type="text" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input id="password" name="password" type="password" required autocomplete="current-password">
+            </div>
+            <button class="btn btn-send" type="submit">Войти</button>
+        </form>
+    </section>
+    <section class="card upload-card" style="margin-top: 1.25rem;">
+        <h3>Регистрация</h3>
+        <p>Логин — буквы и цифры, от 3 символов. Пароль — не короче 10 символов. После регистрации открывается загрузка документов.</p>
+        {% if register_error %}<p class="upload-status upload-status--err">{{ register_error }}</p>{% endif %}
+        <form method="post" action="/api/v1/auth/register" class="upload-form">
+            <input type="hidden" name="next" value="/ui/upload">
+            <div class="form-group">
+                <label for="reg-login">Логин</label>
+                <input id="reg-login" name="login" type="text" required autocomplete="username" minlength="3" maxlength="64">
+            </div>
+            <div class="form-group">
+                <label for="reg-password">Пароль</label>
+                <input id="reg-password" name="password" type="password" required autocomplete="new-password" minlength="10">
+            </div>
+            <div class="form-group">
+                <label for="reg-password-confirm">Подтверждение пароля</label>
+                <input id="reg-password-confirm" name="password_confirm" type="password" required autocomplete="new-password" minlength="10">
+            </div>
+            <button class="btn btn-send" type="submit">Зарегистрироваться</button>
+        </form>
+    </section>
+</main>
+{% endblock %}

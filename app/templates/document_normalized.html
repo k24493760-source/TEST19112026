@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Нормализованный текст — {{ document.title }}{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading workspace-heading">
+        <div>
+            <h2>Нормализованный текст</h2>
+            <p>{{ document.title }} · версия {{ document.version }} · {{ document.document_class }}</p>
+        </div>
+        <a class="btn btn-secondary" href="/ui/workspace">К рабочему пространству</a>
+    </div>
+    <section class="card inspect-card">
+        <pre class="normalized-text">{{ normalized_text }}</pre>
+    </section>
+</main>
+{% endblock %}

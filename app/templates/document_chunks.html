@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Чанки — {{ document.title }}{% endblock %}
+
+{% block content %}
+<main class="content content--scroll">
+    <div class="page-heading workspace-heading">
+        <div>
+            <h2>Чанки и эмбеддинги</h2>
+            <p>{{ document.title }} · {{ chunks|length }} чанков · векторов: {{ embedded }} из {{ chunks|length }} (размерность {{ embedding_dim }})</p>
+        </div>
+        <a class="btn btn-secondary" href="/ui/workspace">К рабочему пространству</a>
+    </div>
+    {% if chunks %}
+        {% for chunk in chunks %}
+        <article class="card chunk-inspect-card">
+            <div class="chunk-inspect-head">
+                <h3>{{ chunk.section or ("Чанк " ~ chunk.page) }}</h3>
+                {% if chunk.has_embedding %}
+                <span class="status-pill status-pill--approved">вектор {{ chunk.dim }}</span>
+                {% else %}
+                <span class="status-pill status-pill--draft">вектор не посчитан</span>
+                {% endif %}
+            </div>
+            <p class="chunk-inspect-text">{{ chunk.text }}</p>
+            <p class="embed-preview hash-cell">{{ chunk.preview }}</p>
+        </article>
+        {% endfor %}
+    {% else %}
+        <p class="expert-empty">Чанков у этого документа пока нет.</p>
+    {% endif %}
+</main>
+{% endblock %}

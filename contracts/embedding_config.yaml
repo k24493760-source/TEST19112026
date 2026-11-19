@@ -1,0 +1,17 @@
+# Конфиг векторизации MVP. Смена модели — новая embedding_config_version
+# и отдельный набор строк chunk_embeddings, без смешения пространств.
+embedding_config_version: "2026-11-17-minilm-seg-v1"
+embedding_model: all-MiniLM-L6-v2
+embedding_dim: 384
+max_seq_length: 256
+# Фактическое число спецтокенов измеряется токенизатором при запуске.
+batch_size_default: 4
+min_batch_size: 1
+# Не писать в knowledge_chunks.embedding и не вызывать продуктивный RAG.
+write_chunk_column: false
+allow_prod_database: false
+prod_database_name: most_db
+allowed_chunk_status: draft
+embedding_status_ready: ready
+embedding_status_superseded: superseded
+embedding_status_error: error
